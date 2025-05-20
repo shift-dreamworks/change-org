@@ -18,6 +18,7 @@ import {
 } from './components/ui/dialog'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './components/ui/alert-dialog'
 import { Button } from './components/ui/button'
+import { useOrgStorage } from './hooks/use-org-storage'
 
 const nodeTypes = {
   orgNode: OrgNode
@@ -95,6 +96,14 @@ function App() {
   const [editNodeDepartment, setEditNodeDepartment] = useState('')
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [nodeToDelete, setNodeToDelete] = useState<string | null>(null)
+  
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false)
+  const [loadDialogOpen, setLoadDialogOpen] = useState(false)
+  const [chartName, setChartName] = useState('')
+  const [overwriteDialogOpen, setOverwriteDialogOpen] = useState(false)
+  const [selectedChartToLoad, setSelectedChartToLoad] = useState<string | null>(null)
+  
+  const { savedCharts, saveChart, loadChart, deleteChart, chartExists } = useOrgStorage()
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds))
@@ -155,6 +164,56 @@ function App() {
     setDeleteConfirmOpen(false)
     setNodeToDelete(null)
   }, [nodeToDelete, edges, nodes, setEdges, setNodes])
+
+  const openSaveDialog = useCallback(() => {
+    setSaveDialogOpen(true)
+    setChartName('')
+  }, [])
+
+  const handleSaveChart = useCallback(() => {
+    if (!chartName.trim()) return
+
+    if (chartExists(chartName)) {
+      setOverwriteDialogOpen(true)
+      return
+    }
+
+    saveChart(chartName, nodes, edges)
+    setSaveDialogOpen(false)
+  }, [chartName, nodes, edges, saveChart, chartExists])
+
+  const confirmOverwrite = useCallback(() => {
+    saveChart(chartName, nodes, edges)
+    setOverwriteDialogOpen(false)
+    setSaveDialogOpen(false)
+  }, [chartName, nodes, edges, saveChart])
+
+  const openLoadDialog = useCallback(() => {
+    setLoadDialogOpen(true)
+    setSelectedChartToLoad(null)
+  }, [])
+
+  const selectChartToLoad = useCallback((name: string) => {
+    setSelectedChartToLoad(name)
+  }, [])
+
+  const handleLoadChart = useCallback(() => {
+    if (!selectedChartToLoad) return
+
+    const chart = loadChart(selectedChartToLoad)
+    if (chart) {
+      setNodes(chart.nodes)
+      setEdges(chart.edges)
+      setLoadDialogOpen(false)
+    }
+  }, [selectedChartToLoad, loadChart, setNodes, setEdges])
+
+  const handleDeleteSavedChart = useCallback((name: string) => {
+    deleteChart(name)
+    if (selectedChartToLoad === name) {
+      setSelectedChartToLoad(null)
+    }
+  }, [deleteChart, selectedChartToLoad])
 
   const addNode = () => {
     if (!nodeName || !nodeTitle || !nodeDepartment) return
@@ -236,6 +295,26 @@ function App() {
               <li>• ホイールでズーム</li>
               <li>• 背景をドラッグでパン</li>
             </ul>
+          </div>
+
+          <div className="mt-8">
+            <h2 className="text-lg font-semibold mb-4">データ管理</h2>
+            <div className="space-y-2">
+              <Button 
+                className="w-full" 
+                variant="outline" 
+                onClick={openSaveDialog}
+              >
+                現在の組織図を保存
+              </Button>
+              <Button 
+                className="w-full" 
+                variant="outline" 
+                onClick={openLoadDialog}
+              >
+                保存した組織図を読み込む
+              </Button>
+            </div>
           </div>
         </div>
         
@@ -333,6 +412,123 @@ function App() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 保存ダイアログ */}
+      <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>組織図を保存</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="chartName" className="text-right text-sm font-medium">
+                組織図の名前
+              </label>
+              <input
+                id="chartName"
+                value={chartName}
+                onChange={(e) => setChartName(e.target.value)}
+                className="col-span-3 p-2 border rounded"
+                placeholder="例: 2023年第4四半期"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+              キャンセル
+            </Button>
+            <Button onClick={handleSaveChart} disabled={!chartName.trim()}>
+              保存
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 上書き確認ダイアログ */}
+      <AlertDialog open={overwriteDialogOpen} onOpenChange={setOverwriteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>上書き確認</AlertDialogTitle>
+            <AlertDialogDescription>
+              「{chartName}」という名前の組織図は既に存在します。上書きしますか？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOverwriteDialogOpen(false)}>
+              キャンセル
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={confirmOverwrite}>
+              上書きする
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 読み込みダイアログ */}
+      <Dialog open={loadDialogOpen} onOpenChange={setLoadDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>保存した組織図を読み込む</DialogTitle>
+          </DialogHeader>
+          {savedCharts.length === 0 ? (
+            <div className="py-6 text-center text-zinc-500">
+              保存された組織図がありません
+            </div>
+          ) : (
+            <div className="max-h-[300px] overflow-y-auto border rounded">
+              <table className="w-full border-collapse">
+                <thead className="bg-slate-100 sticky top-0">
+                  <tr>
+                    <th className="p-2 text-left font-medium border-b">名前</th>
+                    <th className="p-2 text-left font-medium border-b">更新日時</th>
+                    <th className="p-2 text-center font-medium border-b">操作</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {savedCharts.map((chart) => (
+                    <tr 
+                      key={chart.name} 
+                      className={`border-b hover:bg-slate-50 ${
+                        selectedChartToLoad === chart.name ? 'bg-blue-50' : ''
+                      }`}
+                      onClick={() => selectChartToLoad(chart.name)}
+                    >
+                      <td className="p-2">{chart.name}</td>
+                      <td className="p-2 text-sm">
+                        {new Date(chart.updatedAt).toLocaleString('ja-JP')}
+                      </td>
+                      <td className="p-2 text-center">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 h-7"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSavedChart(chart.name);
+                          }}
+                        >
+                          削除
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setLoadDialogOpen(false)}>
+              キャンセル
+            </Button>
+            <Button 
+              onClick={handleLoadChart} 
+              disabled={!selectedChartToLoad || savedCharts.length === 0}
+            >
+              読み込む
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
