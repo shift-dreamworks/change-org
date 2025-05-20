@@ -12,7 +12,7 @@ interface OrgNodeProps {
 
 const OrgNode = ({ data, isConnectable = true }: OrgNodeProps) => {
   return (
-    <div className="px-4 py-2 shadow-md rounded-md bg-white border-2 border-gray-200 min-w-[180px]">
+    <div className="px-4 py-2 shadow-md rounded-md bg-white border-2 border-gray-200 min-w-[180px] cursor-pointer hover:bg-gray-50 hover:border-blue-300">
       {/* 上部の接続ハンドル */}
       <Handle
         type="target"

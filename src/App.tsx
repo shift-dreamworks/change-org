@@ -13,6 +13,11 @@ import ReactFlow, {
 import 'reactflow/dist/style.css'
 import './App.css'
 import OrgNode from './components/org-chart/OrgNode'
+import { 
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter 
+} from './components/ui/dialog'
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from './components/ui/alert-dialog'
+import { Button } from './components/ui/button'
 
 const nodeTypes = {
   orgNode: OrgNode
@@ -84,10 +89,72 @@ function App() {
   const [nodeName, setNodeName] = useState('')
   const [nodeTitle, setNodeTitle] = useState('')
   const [nodeDepartment, setNodeDepartment] = useState('')
+  const [selectedNode, setSelectedNode] = useState<Node | null>(null)
+  const [editNodeName, setEditNodeName] = useState('')
+  const [editNodeTitle, setEditNodeTitle] = useState('')
+  const [editNodeDepartment, setEditNodeDepartment] = useState('')
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [nodeToDelete, setNodeToDelete] = useState<string | null>(null)
 
   const onConnect = useCallback((params: Connection) => {
     setEdges((eds) => addEdge(params, eds))
   }, [setEdges])
+
+  const onNodeClick = useCallback((_: React.MouseEvent, node: Node) => {
+    setSelectedNode(node)
+    if (node.data) {
+      setEditNodeName(node.data.name || '')
+      setEditNodeTitle(node.data.title || '')
+      setEditNodeDepartment(node.data.department || '')
+    }
+  }, [])
+
+  const closeEditModal = useCallback(() => {
+    setSelectedNode(null)
+  }, [])
+
+  const updateNode = useCallback(() => {
+    if (!selectedNode) return
+
+    const updatedNodes = nodes.map(node => {
+      if (node.id === selectedNode.id) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            name: editNodeName,
+            title: editNodeTitle,
+            department: editNodeDepartment
+          }
+        }
+      }
+      return node
+    })
+
+    setNodes(updatedNodes)
+    setSelectedNode(null)
+  }, [selectedNode, nodes, setNodes, editNodeName, editNodeTitle, editNodeDepartment])
+
+  const openDeleteConfirm = useCallback((nodeId: string) => {
+    setNodeToDelete(nodeId)
+    setDeleteConfirmOpen(true)
+    setSelectedNode(null) // 編集モーダルを閉じる
+  }, [])
+
+  const deleteNode = useCallback(() => {
+    if (!nodeToDelete) return
+
+    const newEdges = edges.filter(
+      edge => edge.source !== nodeToDelete && edge.target !== nodeToDelete
+    )
+
+    const newNodes = nodes.filter(node => node.id !== nodeToDelete)
+
+    setEdges(newEdges)
+    setNodes(newNodes)
+    setDeleteConfirmOpen(false)
+    setNodeToDelete(null)
+  }, [nodeToDelete, edges, nodes, setEdges, setNodes])
 
   const addNode = () => {
     if (!nodeName || !nodeTitle || !nodeDepartment) return
@@ -180,6 +247,7 @@ function App() {
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
             onConnect={onConnect}
+            onNodeClick={onNodeClick}
             nodeTypes={nodeTypes}
             fitView
           >
@@ -189,6 +257,82 @@ function App() {
           </ReactFlow>
         </div>
       </div>
+
+      {/* ノード編集モーダル */}
+      <Dialog open={selectedNode !== null} onOpenChange={open => !open && closeEditModal()}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>ノードを編集</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="name" className="text-right text-sm font-medium">
+                名前
+              </label>
+              <input
+                id="name"
+                value={editNodeName}
+                onChange={(e) => setEditNodeName(e.target.value)}
+                className="col-span-3 p-2 border rounded"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="title" className="text-right text-sm font-medium">
+                役職
+              </label>
+              <input
+                id="title"
+                value={editNodeTitle}
+                onChange={(e) => setEditNodeTitle(e.target.value)}
+                className="col-span-3 p-2 border rounded"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="department" className="text-right text-sm font-medium">
+                部署
+              </label>
+              <input
+                id="department"
+                value={editNodeDepartment}
+                onChange={(e) => setEditNodeDepartment(e.target.value)}
+                className="col-span-3 p-2 border rounded"
+              />
+            </div>
+          </div>
+          <DialogFooter className="sm:justify-between">
+            <Button variant="destructive" onClick={() => selectedNode && openDeleteConfirm(selectedNode.id)}>
+              削除
+            </Button>
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={closeEditModal}>
+                キャンセル
+              </Button>
+              <Button onClick={updateNode}>
+                保存
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 削除確認ダイアログ */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>ノードを削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              このノードを削除すると、関連するすべての接続も削除されます。
+              この操作は元に戻せません。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={deleteNode} className="bg-red-600 hover:bg-red-700">
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
